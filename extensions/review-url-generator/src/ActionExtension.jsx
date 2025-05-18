@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import { useEffect, useState } from "react";
 import {
   reactExtension,
   useApi,
@@ -6,18 +6,26 @@ import {
   BlockStack,
   Button,
   Text,
-} from '@shopify/ui-extensions-react/admin';
+  URLField,
+  Link,
+  Section,
+  InlineStack,
+} from "@shopify/ui-extensions-react/admin";
 
 // The target used here must match the target used in the extension's toml file (./shopify.extension.toml)
-const TARGET = 'admin.product-details.action.render';
+const TARGET = "admin.product-details.action.render";
 
 export default reactExtension(TARGET, () => <App />);
 
 function App() {
   // The useApi hook provides access to several useful APIs like i18n, close, and data.
-  const {i18n, close, data} = useApi(TARGET);
-  console.log({data});
-  const [productTitle, setProductTitle] = useState('');
+  const { i18n, close, data } = useApi(TARGET);
+  console.log({ data });
+  const [productTitle, setProductTitle] = useState("");
+  const [productId, setProductId] = useState("");
+  const [bvCampaignId, setBvCampaignId] = useState("");
+  const [reviewLink, setReviewLink] = useState("");
+
   // Use direct API calls to fetch data from Shopify.
   // See https://shopify.dev/docs/api/admin-graphql for more information about Shopify's GraphQL API
   useEffect(() => {
@@ -26,9 +34,10 @@ function App() {
         query: `query Product($id: ID!) {
           product(id: $id) {
             title
+            id
           }
         }`,
-        variables: {id: data.selected[0].id},
+        variables: { id: data.selected[0].id },
       };
 
       const res = await fetch("shopify:admin/api/graphql.json", {
@@ -37,42 +46,52 @@ function App() {
       });
 
       if (!res.ok) {
-        console.error('Network error');
+        console.error("Network error");
       }
 
       const productData = await res.json();
       setProductTitle(productData.data.product.title);
+      setProductId(productData.data.product.id.split("/").pop());
     })();
   }, [data.selected]);
+
+  useEffect(() => {
+    generateURL();
+  }, [productId, bvCampaignId]);
+
+  function generateURL() {
+    const baseURL = `https://apps.bazaarvoice.com/deployments/rhone/main_site/production/en_US/container.html?bvaction=rr_submit_review?bvproductId=${productId}`;
+    const fullURL = bvCampaignId
+      ? `${baseURL}&bvcampaignId=${bvCampaignId}`
+      : baseURL;
+
+    setReviewLink(fullURL);
+  }
   return (
     // The AdminAction component provides an API for setting the title and actions of the Action extension wrapper.
     <AdminAction
-      primaryAction={
-        <Button
-          onPress={() => {
-            console.log('saving');
-            close();
-          }}
-        >
-          Done
-        </Button>
-      }
-      secondaryAction={
-        <Button
-          onPress={() => {
-            console.log('closing');
-            close();
-          }}
-        >
-          Close
-        </Button>
-      }
+      primaryAction={<Button onPress={() => close()}>Done</Button>}
+      secondaryAction={<Button onPress={() => close()}>Close</Button>}
     >
-      <BlockStack>
-        {/* Set the translation values for each supported language in the locales directory */}
-        <Text fontWeight="bold">{i18n.translate('welcome', {target: TARGET})}</Text>
-        <Text>Current product: {productTitle}</Text>
-      </BlockStack>
+      <Section heading={`Generate a review URL for: ${productTitle}`}>
+        <BlockStack padding="large none" blockGap="large">
+          <InlineStack inlineAlignment="start" blockAlignment="center">
+            <BlockStack maxInlineSize="30%">
+              <Text>Optional Campaign ID:</Text>
+            </BlockStack>
+            <BlockStack>
+              <URLField
+                placeholder="optional_campaign_id"
+                value={bvCampaignId}
+                onChange={(value) => setBvCampaignId(value)}
+              />
+            </BlockStack>
+          </InlineStack>
+          <Link target="_blank" href={reviewLink}>
+            {reviewLink}
+          </Link>
+        </BlockStack>
+      </Section>
     </AdminAction>
   );
 }
